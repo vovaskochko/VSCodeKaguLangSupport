@@ -1,0 +1,25 @@
+{
+  "name": "kaguasmlang",
+  "displayName": "KaguOS Assembler Language Support",
+  "description": "Support of KaguOS assembler language",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "kaguasm",
+      "aliases": ["KaguOS Assembler", "kaguasm"],
+      "extensions": [".kgasm"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "kaguasm",
+      "scopeName": "source.kgasm",
+      "path": "./syntaxes/kaguasm.tmLanguage.json"
+    }]
+  }
+}

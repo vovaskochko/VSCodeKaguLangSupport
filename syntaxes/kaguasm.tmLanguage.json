@@ -1,0 +1,61 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "KaguOS Assembler",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#registers"
+		},
+		{
+			"include": "#labels"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.kaguasm",
+				"match": "\\b(copy|write|to|read_input|cpu_exec|jump|jump_if|label|call_func|return_func|exit)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.kaguasm",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.kaguasm",
+					"match": "\\\\."
+				}
+			]
+		},
+		"numbers": {
+			"match": "\\b\\d+\\b",
+			"name": "constant.numeric.kaguasm"
+		},
+		"registers": {
+		  	"match": "\\b(REG_OP|REG_OP_INFO|REG_A|REG_A_INFO|REG_B|REG_B_INFO|REG_C|REG_C_INFO|REG_D|REG_D_INFO|REG_RESULT|REG_RESULT_INFO|REG_BOOL_RESULT|REG_BOOL_RESULT_INFO|REG_STACK_PTR|REG_STACK_PTR_INFO|REG_STACK_PREV_PTR|REG_STACK_PREV_PTR_INFO|DISPLAY_BUFFER|DISPLAY_BUFFER_INFO|DISPLAY_COLOR|DISPLAY_COLOR_INFO|KEYBOARD_BUFFER|KEYBOARD_BUFFER_INFO|PROGRAM_COUNTER|PROGRAM_COUNTER_INFO)\\b",
+		  	"name": "constant.numeric.kaguasm"
+		},
+		"labels": {
+			"match": "(?<=\\blabel:)\\s*\\w+",
+      		"name": "string"
+		},
+		"comments": {
+			"begin": "//",
+			"end": "$",
+			"name": "comment.line.double-slash.mylanguage"
+		}
+	},
+	"scopeName": "source.kgasm"
+}
