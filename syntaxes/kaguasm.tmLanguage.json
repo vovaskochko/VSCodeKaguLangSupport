@@ -25,7 +25,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.kaguasm",
-				"match": "\\b(copy|write|to|read_input|cpu_exec|jump|jump_if|label|call_func|return_func|exit)\\b"
+				"match": "\\b(copy|write|to|cpu_exec|jump|jump_if|label|call_func|return_func)\\b"
 			}]
 		},
 		"strings": {
@@ -44,7 +44,7 @@
 			"name": "constant.numeric.kaguasm"
 		},
 		"registers": {
-		  	"match": "\\b(REG_OP|REG_OP_INFO|REG_A|REG_A_INFO|REG_B|REG_B_INFO|REG_C|REG_C_INFO|REG_D|REG_D_INFO|REG_RESULT|REG_RESULT_INFO|REG_BOOL_RESULT|REG_BOOL_RESULT_INFO|REG_STACK_PTR|REG_STACK_PTR_INFO|REG_STACK_PREV_PTR|REG_STACK_PREV_PTR_INFO|DISPLAY_BUFFER|DISPLAY_BUFFER_INFO|DISPLAY_COLOR|DISPLAY_COLOR_INFO|KEYBOARD_BUFFER|KEYBOARD_BUFFER_INFO|PROGRAM_COUNTER|PROGRAM_COUNTER_INFO)\\b",
+		  	"match": "\\b(REG_OP|REG_OP_INFO|REG_A|REG_A_INFO|REG_B|REG_B_INFO|REG_C|REG_C_INFO|REG_D|REG_D_INFO|REG_RES|REG_RES_INFO|REG_BOOL_RES|REG_BOOL_RES_INFO|REG_STACK_PTR|REG_STACK_PTR_INFO|REG_STACK_PREV_PTR|REG_STACK_PREV_PTR_INFO|DISPLAY_BUFFER|DISPLAY_BUFFER_INFO|DISPLAY_COLOR|DISPLAY_COLOR_INFO|KEYBOARD_BUFFER|KEYBOARD_BUFFER_INFO|PROGRAM_COUNTER|PROGRAM_COUNTER_INFO)\\b",
 		  	"name": "constant.numeric.kaguasm"
 		},
 		"labels": {
@@ -57,5 +57,5 @@
 			"name": "comment.line.double-slash.mylanguage"
 		}
 	},
-	"scopeName": "source.kgasm"
+	"scopeName": "source.kga"
 }
