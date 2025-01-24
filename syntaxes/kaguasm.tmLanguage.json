@@ -15,6 +15,12 @@
 			"include": "#registers"
 		},
 		{
+			"include": "#operations"
+		},
+		{
+			"include": "#colors"
+		},
+		{
 			"include": "#labels"
 		},
 		{
@@ -25,7 +31,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.kaguasm",
-				"match": "\\b(copy|write|to|cpu_exec|jump|jump_if|label|call_func|return_func)\\b"
+				"match": "\\b(copy|write|to|cpu_exec|jump|jump_if|label|var|call|func|return|func_end|DEBUG_ON|DEBUG_OFF)\\b"
 			}]
 		},
 		"strings": {
@@ -44,9 +50,17 @@
 			"name": "constant.numeric.kaguasm"
 		},
 		"registers": {
-		  	"match": "\\b(REG_OP|REG_OP_INFO|REG_A|REG_A_INFO|REG_B|REG_B_INFO|REG_C|REG_C_INFO|REG_D|REG_D_INFO|REG_RES|REG_RES_INFO|REG_BOOL_RES|REG_BOOL_RES_INFO|REG_STACK_PTR|REG_STACK_PTR_INFO|REG_STACK_PREV_PTR|REG_STACK_PREV_PTR_INFO|DISPLAY_BUFFER|DISPLAY_BUFFER_INFO|DISPLAY_COLOR|DISPLAY_COLOR_INFO|KEYBOARD_BUFFER|KEYBOARD_BUFFER_INFO|PROGRAM_COUNTER|PROGRAM_COUNTER_INFO)\\b",
-		  	"name": "constant.numeric.kaguasm"
+		  	"match": "\\b(INFO_REG_OP|REG_OP|INFO_REG_A|REG_A|INFO_REG_B|REG_B|INFO_REG_C|REG_C|INFO_REG_D|REG_D|INFO_REG_RES|REG_RES|INFO_REG_BOOL_RES|REG_BOOL_RES|INFO_REG_ERROR|REG_ERROR|INFO_DISPLAY_BUFFER|DISPLAY_BUFFER|INFO_DISPLAY_COLOR|DISPLAY_COLOR|INFO_KEYBOARD_BUFFER|KEYBOARD_BUFFER|INFO_PROGRAM_COUNTER|PROGRAM_COUNTER|INFO_FREE_MEMORY_START|FREE_MEMORY_START|INFO_FREE_MEMORY_END|FREE_MEMORY_END|INFO_FREE_CHUNKS|FREE_CHUNKS)\\b",
+			"name": "constant.numeric.kaguasm"
 		},
+		"operations": {
+			"match": "\\b(OP_ADD|OP_SUB|OP_INCR|OP_DECR|OP_DIV|OP_MOD|OP_MUL|OP_IS_NUM|OP_CMP_EQ|OP_CMP_NEQ|OP_CMP_LT|OP_CMP_LE|OP_CONTAINS|OP_GET_LENGTH|OP_STARTS_WITH|OP_GET_COLUMN|OP_REPLACE_COLUMN|OP_CONCAT_WITH|OP_READ_INPUT|OP_DISPLAY|OP_DISPLAY_LN|OP_READ_BLOCK|OP_WRITE_BLOCK|OP_NOP|OP_HALT|OP_UNKNOWN)\\b",
+			"name": "constant.numeric.kaguasm"
+	  	},
+		"colors": {
+			"match": "\\b(COLOR_NO|COLOR_GREEN|COLOR_YELLOW|COLOR_RED)\\b",
+			"name": "constant.numeric.kaguasm"
+	  	},
 		"labels": {
 			"match": "(?<=\\blabel:)\\s*\\w+",
       		"name": "string"
