@@ -21,6 +21,9 @@
 			"include": "#colors"
 		},
 		{
+			"include": "#modes"
+		},
+		{
 			"include": "#labels"
 		},
 		{
@@ -59,6 +62,10 @@
 	  	},
 		"colors": {
 			"match": "\\b(COLOR_NO|COLOR_GREEN|COLOR_YELLOW|COLOR_RED|COLOR_BLACK|COLOR_BLUE|COLOR_MAGENTA|COLOR_CYAN|COLOR_WHITE)\\b",
+			"name": "constant.numeric.kaguasm"
+	  	},
+		"modes": {
+			"match": "\\b(KEYBOARD_READ_LINE|KEYBOARD_READ_CHAR|KEYBOARD_READ_LINE_SILENTLY|KEYBOARD_READ_CHAR_SILENTLY)\\b",
 			"name": "constant.numeric.kaguasm"
 	  	},
 		"labels": {
