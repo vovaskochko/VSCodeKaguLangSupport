@@ -75,7 +75,7 @@
 		"comments": {
 			"begin": "//",
 			"end": "$",
-			"name": "comment.line.double-slash.mylanguage"
+			"name": "comment.line.double-slash.kaguasm"
 		}
 	},
 	"scopeName": "source.kga"
