@@ -34,7 +34,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.kaguasm",
-				"match": "\\b(copy|write|to|cpu_exec|jump|jump_if|label|var|call|func|return|func_end|DEBUG_ON|DEBUG_OFF)\\b"
+				"match": "\\b(copy|write|to|cpu_exec|jump|jump_if|jump_if_not|jump_err|label|var|call|func|return|func_end|DEBUG_ON|DEBUG_OFF)\\b"
 			}]
 		},
 		"strings": {
