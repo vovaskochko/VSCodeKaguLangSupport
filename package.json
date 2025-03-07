@@ -2,7 +2,7 @@
   "name": "kaguasmlang",
   "displayName": "KaguOS Assembler Language Support",
   "description": "Support of KaguOS assembler language",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "engines": {
     "vscode": "^1.80.0"
   },
