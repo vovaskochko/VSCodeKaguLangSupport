@@ -142,7 +142,27 @@ function activate(context) {
                         return [new vscode.CompletionItem('to', vscode.CompletionItemKind.Keyword)];
                     }
                     if (currentPosition === 4) {
-                        return addressCompletions();
+                        const value = tokens[1] || '';
+                        if (value.startsWith('OP_')) {
+                            const item = constantItem('REG_OP', 'Register');
+                            item.preselect = true;
+                            item.sortText = '!0';
+                            return [
+                                item,
+                                ...REGISTERS.filter(r => r !== 'REG_OP').map(r => constantItem(r, 'Register')),
+                                snippet('var:', 'var:${1:name}', 'Variable reference'),
+                            ];
+                        }
+                        if (value.startsWith('COLOR_')) {
+                            const color = constantItem('DISPLAY_COLOR', 'Register');
+                            color.preselect = true;
+                            const bg = constantItem('DISPLAY_BACKGROUND', 'Register');
+                            return [color, bg];
+                        }
+                        return [
+                            ...REGISTERS.map(r => constantItem(r, 'Register')),
+                            snippet('var:', 'var:${1:name}', 'Variable reference'),
+                        ];
                     }
                 }
 
