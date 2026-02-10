@@ -2,13 +2,17 @@
   "name": "kaguasmlang",
   "displayName": "KaguOS Assembler Language Support",
   "description": "Support of KaguOS assembler language",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
     "Programming Languages"
   ],
+  "activationEvents": [
+    "onLanguage:kaguasm"
+  ],
+  "main": "./extension.js",
   "contributes": {
     "languages": [
       {
