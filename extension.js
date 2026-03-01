@@ -1,4 +1,8 @@
 const vscode = require('vscode');
+const net    = require('net');
+const path   = require('path');
+const fs     = require('fs');
+const { spawn } = require('child_process');
 
 const COMMANDS = [
     'write', 'copy', 'label', 'jump', 'jump_if', 'jump_if_not',
@@ -51,6 +55,278 @@ const KEYBOARD_MODES = [
     'KEYBOARD_READ_CHAR', 'KEYBOARD_READ_CHAR_SILENTLY'
 ];
 
+// ============================================================================
+// Register name map (from registers.hpp)
+// ============================================================================
+const REG_NAMES = {
+     1: 'REG_A',              2: 'REG_B',              3: 'REG_C',
+     4: 'REG_D',              5: 'REG_E',              6: 'REG_F',
+     7: 'REG_OP',             8: 'REG_RES',            9: 'REG_BOOL_RES',
+    10: 'REG_ERROR',         11: 'REG_LAST_KEY',
+    12: 'DISPLAY_BUFFER',    13: 'DISPLAY_COLOR',     14: 'KEYBOARD_BUFFER',
+    15: 'DISPLAY_BACKGROUND',16: 'PROGRAM_COUNTER',   17: 'SYS_ENERGY',
+    18: 'FREE_MEMORY_END',   19: 'FREE_MEMORY_START', 20: 'FREE_CHUNKS',
+    21: 'PROC_START_ADDRESS',22: 'PROC_END_ADDRESS',  23: 'SYS_CALL_HANDLER',
+    24: 'SYS_RET_ADDRESS',   25: 'SYS_INTERRUPT_HANDLER',
+    26: 'SYS_INTERRUPT_DATA',27: 'SYS_HW_TIMER',
+};
+
+// ============================================================================
+// KaguDebugAdapter — inline DAP implementation
+// ============================================================================
+class KaguDebugAdapter {
+    constructor() {
+        this._emitter = new vscode.EventEmitter();
+        this.onDidSendMessage = this._emitter.event;
+
+        this._seq = 1;
+        this._proc = null;
+        this._socket = null;
+        this._recvBuf = '';
+        this._addrToSrc = new Map();   // addr -> { file, line }
+        this._srcToAddr = new Map();   // 'file:line' -> addr
+        this._bpByFile  = new Map();   // srcPath -> Set<addr>
+        this._currentPc = null;
+        this._stateCallback = null;    // set while waiting for STATE response
+        this._pendingCmds  = [];       // queued before socket connects
+    }
+
+    // ---- DAP transport --------------------------------------------------
+
+    _send(msg) {
+        msg.seq = this._seq++;
+        this._emitter.fire(msg);
+    }
+
+    _respond(req, body) {
+        this._send({ type: 'response', request_seq: req.seq,
+                     success: true, command: req.command, body: body || {} });
+    }
+
+    _event(event, body) {
+        this._send({ type: 'event', event, body: body || {} });
+    }
+
+    // ---- kagu_boot TCP --------------------------------------------------
+
+    _toKagu(line) {
+        if (this._socket && !this._socket.destroyed) {
+            this._socket.write(line + '\n');
+        } else {
+            this._pendingCmds.push(line);
+        }
+    }
+
+    _flushPending() {
+        for (const cmd of this._pendingCmds) {
+            this._socket.write(cmd + '\n');
+        }
+        this._pendingCmds = [];
+    }
+
+    _onSocketData(data) {
+        this._recvBuf += data.toString();
+        const lines = this._recvBuf.split('\n');
+        this._recvBuf = lines.pop();   // incomplete tail
+
+        for (const raw of lines) {
+            const line = raw.trimEnd();
+            if (!line) continue;
+
+            if (this._stateCallback && (line.startsWith('RAM ') || line === 'END')) {
+                this._stateCallback(line);
+                if (line === 'END') this._stateCallback = null;
+            } else if (line.startsWith('PAUSED ')) {
+                this._currentPc = parseInt(line.split(' ')[1]);
+                this._event('stopped', { reason: 'breakpoint',
+                    threadId: 1, allThreadsStopped: true });
+            } else if (line === 'HALTED') {
+                this._event('stopped', { reason: 'pause',
+                    description: 'CPU halted', threadId: 1, allThreadsStopped: true });
+            }
+        }
+    }
+
+    // ---- Source map -----------------------------------------------------
+
+    _loadMap(mapFile) {
+        try {
+            const lines = fs.readFileSync(mapFile, 'utf8').split('\n');
+            for (const line of lines) {
+                const sp = line.trim().indexOf(' ');
+                if (sp < 0) continue;
+                const addr  = parseInt(line.substring(0, sp));
+                const rest  = line.substring(sp + 1).trim();
+                const colon = rest.lastIndexOf(':');
+                if (colon < 0) continue;
+                const file  = rest.substring(0, colon);
+                const ln    = parseInt(rest.substring(colon + 1));
+                this._addrToSrc.set(addr, { file, line: ln });
+                this._srcToAddr.set(`${file}:${ln}`, addr);
+                const base = path.basename(file);
+                if (!this._srcToAddr.has(`${base}:${ln}`))
+                    this._srcToAddr.set(`${base}:${ln}`, addr);
+            }
+        } catch (_) {}
+    }
+
+    _resolveAddr(srcPath, line) {
+        return this._srcToAddr.get(`${srcPath}:${line}`)
+            ?? this._srcToAddr.get(`${path.basename(srcPath)}:${line}`);
+    }
+
+    // ---- DAP handlers ---------------------------------------------------
+
+    handleMessage(message) {
+        const h = {
+            initialize:          () => this._handleInitialize(message),
+            launch:              () => this._handleLaunch(message),
+            setBreakpoints:      () => this._handleSetBreakpoints(message),
+            configurationDone:   () => this._handleConfigDone(message),
+            continue:            () => this._handleContinue(message),
+            next:                () => this._handleNext(message),
+            stepIn:              () => this._handleNext(message),
+            stackTrace:          () => this._handleStackTrace(message),
+            scopes:              () => this._handleScopes(message),
+            variables:           () => this._handleVariables(message),
+            threads:             () => this._respond(message, { threads: [{ id: 1, name: 'KaguOS CPU' }] }),
+            disconnect:          () => this._handleDisconnect(message),
+        };
+        (h[message.command] ?? (() => this._respond(message)))();
+    }
+
+    _handleInitialize(req) {
+        this._respond(req, { supportsConfigurationDoneRequest: true });
+        this._event('initialized');
+    }
+
+    _handleLaunch(req) {
+        const a = req.arguments || {};
+        const root       = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
+        const abs        = p => path.isAbsolute(p) ? p : path.join(root, p);
+        const firmware   = a.firmware  ?? 'hw/cpu_firmware.bin';
+        const ramSize    = String(a.ramSize ?? 2048);
+        const mapFile    = abs(a.mapFile   ?? 'build/kernel.map');
+        const kaguBoot   = abs(a.kaguBoot  ?? './kagu_boot');
+        const debugPort  = a.debugPort  ?? 4711;
+
+        this._loadMap(mapFile);
+
+        this._proc = spawn(kaguBoot, [firmware, ramSize, '--debug-port', String(debugPort)],
+                           { cwd: root });
+
+        // Give kagu_boot a moment to bind the socket before we connect
+        setTimeout(() => {
+            this._socket = net.createConnection(debugPort, '127.0.0.1', () => {
+                this._flushPending();
+                this._respond(req);
+            });
+            this._socket.on('data', d => this._onSocketData(d));
+            this._socket.on('close', () => this._event('terminated'));
+            this._socket.on('error', err => {
+                this._event('output', { category: 'stderr',
+                    output: `[kagu] socket error: ${err.message}\n` });
+                this._event('terminated');
+            });
+        }, 400);
+    }
+
+    _handleSetBreakpoints(req) {
+        const args    = req.arguments || {};
+        const srcPath = args.source?.path ?? '';
+        const wanted  = args.breakpoints ?? [];
+
+        // Clear previously registered breakpoints for this file
+        for (const addr of (this._bpByFile.get(srcPath) ?? new Set()))
+            this._toKagu(`CLEAR ${addr}`);
+
+        const newAddrs = new Set();
+        const result   = [];
+        for (const bp of wanted) {
+            const addr = this._resolveAddr(srcPath, bp.line);
+            if (addr !== undefined) {
+                this._toKagu(`BREAK ${addr}`);
+                newAddrs.add(addr);
+                result.push({ verified: true, line: bp.line });
+            } else {
+                result.push({ verified: false, message: `No instruction at line ${bp.line}` });
+            }
+        }
+        this._bpByFile.set(srcPath, newAddrs);
+        this._respond(req, { breakpoints: result });
+    }
+
+    _handleConfigDone(req) {
+        this._respond(req);
+        this._toKagu('CONTINUE');
+    }
+
+    _handleContinue(req) {
+        this._respond(req, { allThreadsContinued: true });
+        this._event('continued', { threadId: 1, allThreadsContinued: true });
+        this._toKagu('CONTINUE');
+    }
+
+    _handleNext(req) {
+        this._respond(req);
+        this._toKagu('STEP');
+    }
+
+    _handleStackTrace(req) {
+        const frames = [];
+        if (this._currentPc !== null) {
+            const src = this._addrToSrc.get(this._currentPc);
+            if (src) {
+                const absFile = path.isAbsolute(src.file) ? src.file
+                    : path.join(vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? '', src.file);
+                frames.push({ id: 1, name: `PC=${this._currentPc}`,
+                    source: { name: path.basename(src.file), path: absFile },
+                    line: src.line, column: 1 });
+            } else {
+                frames.push({ id: 1, name: `PC=${this._currentPc} (no source)`,
+                    line: 0, column: 0 });
+            }
+        }
+        this._respond(req, { stackFrames: frames, totalFrames: frames.length });
+    }
+
+    _handleScopes(req) {
+        this._respond(req, { scopes: [
+            { name: 'Registers', variablesReference: 1, expensive: false },
+        ]});
+    }
+
+    _handleVariables(req) {
+        const variables = [];
+        this._stateCallback = line => {
+            if (line.startsWith('RAM ')) {
+                const parts = line.split(' ');
+                const addr  = parseInt(parts[1]);
+                const value = parts.slice(2).join(' ');
+                variables.push({ name: REG_NAMES[addr] ?? `RAM[${addr}]`,
+                                  value: value || '""', variablesReference: 0 });
+            } else if (line === 'END') {
+                this._respond(req, { variables });
+            }
+        };
+        this._toKagu('STATE 1 27');
+    }
+
+    _handleDisconnect(req) {
+        this._toKagu('QUIT');
+        this._socket?.destroy();
+        this._proc?.kill();
+        this._respond(req);
+    }
+
+    dispose() {
+        this._socket?.destroy();
+        this._proc?.kill();
+    }
+}
+
+// ============================================================================
+
 function tokenize(text) {
     const tokens = [];
     let current = '';
@@ -98,6 +374,15 @@ function addressCompletions() {
 }
 
 function activate(context) {
+    // Debug adapter
+    context.subscriptions.push(
+        vscode.debug.registerDebugAdapterDescriptorFactory('kagu', {
+            createDebugAdapterDescriptor(_session) {
+                return new vscode.DebugAdapterInlineImplementation(new KaguDebugAdapter());
+            }
+        })
+    );
+
     const provider = vscode.languages.registerCompletionItemProvider(
         'kaguasm',
         {

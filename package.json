@@ -10,7 +10,8 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:kaguasm"
+    "onLanguage:kaguasm",
+    "onDebugResolve:kagu"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -32,6 +33,54 @@
         "language": "kaguasm",
         "scopeName": "source.kga",
         "path": "./syntaxes/kaguasm.tmLanguage.json"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "kagu",
+        "label": "KaguOS Debug",
+        "languages": ["kaguasm"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["firmware"],
+            "properties": {
+              "firmware": {
+                "type": "string",
+                "description": "Path to CPU firmware file (e.g. hw/cpu_firmware.bin)",
+                "default": "hw/cpu_firmware.bin"
+              },
+              "ramSize": {
+                "type": "number",
+                "description": "RAM size in cells",
+                "default": 2048
+              },
+              "mapFile": {
+                "type": "string",
+                "description": "Path to source map produced by kagu_asm",
+                "default": "build/kernel.map"
+              },
+              "kaguBoot": {
+                "type": "string",
+                "description": "Path to kagu_boot executable",
+                "default": "./kagu_boot"
+              },
+              "debugPort": {
+                "type": "number",
+                "description": "TCP port for the kagu_boot debug server",
+                "default": 4711
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "kagu",
+            "request": "launch",
+            "name": "Boot KaguOS",
+            "firmware": "hw/cpu_firmware.bin",
+            "ramSize": 2048
+          }
+        ]
       }
     ]
   }
