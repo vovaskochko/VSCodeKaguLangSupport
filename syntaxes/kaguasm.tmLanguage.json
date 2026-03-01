@@ -2,27 +2,13 @@
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "KaguOS Assembler",
 	"patterns": [
-		{
-			"include": "#comments"
-		},
-		{
-			"include": "#write-command"
-		},
-		{
-			"include": "#copy-command"
-		},
-		{
-			"include": "#jump-commands"
-		},
-		{
-			"include": "#label-declaration"
-		},
-		{
-			"include": "#var-declaration"
-		},
-		{
-			"include": "#standalone-commands"
-		}
+		{ "include": "#comments" },
+		{ "include": "#write-command" },
+		{ "include": "#copy-command" },
+		{ "include": "#jump-commands" },
+		{ "include": "#label-declaration" },
+		{ "include": "#var-declaration" },
+		{ "include": "#standalone-commands" }
 	],
 	"repository": {
 		"comments": {
@@ -30,6 +16,26 @@
 			"end": "$",
 			"name": "comment.line.double-slash.kaguasm"
 		},
+
+		"var-reference": {
+			"patterns": [
+				{
+					"match": "[@*]*var:\\w+",
+					"name": "variable.other.kaguasm"
+				}
+			]
+		},
+
+		"register-or-address": {
+			"patterns": [
+				{ "include": "#var-reference" },
+				{
+					"match": ".+",
+					"name": "support.variable.kaguasm"
+				}
+			]
+		},
+
 		"write-command": {
 			"begin": "^\\s*(write)\\b",
 			"beginCaptures": {
@@ -38,7 +44,7 @@
 			"end": "$",
 			"patterns": [
 				{
-					"match": "\\s+(\"(?:[^\"\\\\]|\\\\.)*\"|-?\\d+|OP_\\w+|SYS_CALL_\\w+|COLOR_\\w+|KEYBOARD_READ_\\w+|label:\\w+)\\s+(to)\\s+(\\*?(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|var:\\w+|-?\\d+))",
+					"match": "\\s+(\"(?:[^\"\\\\]|\\\\.)*\"|-?\\d+(?:\\.\\d+)?|OP_\\w+|SYS_CALL_\\w+|COLOR_\\w+|KEYBOARD_READ_\\w+|label:\\w+)\\s+(to)\\s+(\\*?(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|PROC_\\w+|SYS_\\w+|var:\\w+|-?\\d+))",
 					"captures": {
 						"1": {
 							"patterns": [
@@ -48,30 +54,30 @@
 								},
 								{
 									"match": "label:\\w+",
-									"name": "string.other.label.kaguasm"
+									"name": "entity.name.label.kaguasm"
 								},
 								{
 									"match": ".+",
-									"name": "constant.numeric.kaguasm"
+									"name": "constant.language.kaguasm"
 								}
 							]
 						},
 						"2": { "name": "keyword.control.kaguasm" },
 						"3": {
 							"patterns": [
+								{ "include": "#var-reference" },
 								{
 									"match": ".+",
-									"name": "constant.numeric.kaguasm"
+									"name": "support.variable.kaguasm"
 								}
 							]
 						}
 					}
 				},
-				{
-					"include": "#comments"
-				}
+				{ "include": "#comments" }
 			]
 		},
+
 		"copy-command": {
 			"begin": "^\\s*(copy)\\b",
 			"beginCaptures": {
@@ -80,32 +86,33 @@
 			"end": "$",
 			"patterns": [
 				{
-					"match": "\\s+([@*]?(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|var:\\w+|-?\\d+))\\s+(to)\\s+(\\*?(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|var:\\w+|-?\\d+))",
+					"match": "\\s+([@*]*(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|PROC_\\w+|SYS_\\w+|var:\\w+|-?\\d+))\\s+(to)\\s+(\\*?(?:REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|PROC_\\w+|SYS_\\w+|var:\\w+|-?\\d+))",
 					"captures": {
 						"1": {
 							"patterns": [
+								{ "include": "#var-reference" },
 								{
 									"match": ".+",
-									"name": "constant.numeric.kaguasm"
+									"name": "support.variable.kaguasm"
 								}
 							]
 						},
 						"2": { "name": "keyword.control.kaguasm" },
 						"3": {
 							"patterns": [
+								{ "include": "#var-reference" },
 								{
 									"match": ".+",
-									"name": "constant.numeric.kaguasm"
+									"name": "support.variable.kaguasm"
 								}
 							]
 						}
 					}
 				},
-				{
-					"include": "#comments"
-				}
+				{ "include": "#comments" }
 			]
 		},
+
 		"jump-commands": {
 			"begin": "^\\s*(jump_if_not|jump_if|jump_err|jump)\\b",
 			"beginCaptures": {
@@ -114,53 +121,59 @@
 			"end": "$",
 			"patterns": [
 				{
-					"match": "\\s+(\\*?(?:label:\\w+|-?\\d+)|\\*(?:var:\\w+|REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START))",
+					"match": "\\s+(\\*?(?:label:\\w+|-?\\d+|var:\\w+|REG_\\w+|DISPLAY_\\w+|KEYBOARD_BUFFER|PROGRAM_COUNTER|SYS_ENERGY|FREE_\\w+|KERNEL_START|PROC_\\w+|SYS_\\w+))",
 					"captures": {
 						"1": {
 							"patterns": [
 								{
 									"match": "\\*?label:\\w+",
-									"name": "string.other.label.kaguasm"
+									"name": "entity.name.label.kaguasm"
 								},
+								{ "include": "#var-reference" },
 								{
 									"match": ".+",
-									"name": "constant.numeric.kaguasm"
+									"name": "support.variable.kaguasm"
 								}
 							]
 						}
 					}
 				},
-				{
-					"include": "#comments"
-				}
+				{ "include": "#comments" }
 			]
 		},
+
 		"label-declaration": {
 			"begin": "^\\s*(label)\\s+(\\w+)",
 			"beginCaptures": {
 				"1": { "name": "keyword.control.kaguasm" },
-				"2": { "name": "entity.name.function.kaguasm" }
+				"2": { "name": "entity.name.label.kaguasm" }
 			},
 			"end": "$",
 			"patterns": [
-				{
-					"include": "#comments"
-				}
+				{ "include": "#comments" }
 			]
 		},
+
 		"var-declaration": {
 			"begin": "^\\s*(var)\\s+(\\w+)",
 			"beginCaptures": {
 				"1": { "name": "keyword.control.kaguasm" },
-				"2": { "name": "variable.other.kaguasm" }
+				"2": { "name": "entity.name.variable.kaguasm" }
 			},
 			"end": "$",
 			"patterns": [
+				{ "include": "#comments" },
 				{
-					"include": "#comments"
+					"match": "\"(?:[^\"\\\\]|\\\\.)*\"",
+					"name": "string.quoted.double.kaguasm"
+				},
+				{
+					"match": "-?\\d+(?:\\.\\d+)?",
+					"name": "constant.numeric.kaguasm"
 				}
 			]
 		},
+
 		"standalone-commands": {
 			"begin": "^\\s*(cpu_exec|DEBUG_ON|DEBUG_OFF)\\b",
 			"beginCaptures": {
@@ -168,9 +181,7 @@
 			},
 			"end": "$",
 			"patterns": [
-				{
-					"include": "#comments"
-				}
+				{ "include": "#comments" }
 			]
 		}
 	},
