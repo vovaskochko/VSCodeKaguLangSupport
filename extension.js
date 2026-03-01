@@ -96,6 +96,7 @@ class KaguDebugAdapter {
         this._launchReq = null;        // deferred until READY arrives
         this._stateCallback = null;    // set while waiting for STATE response
         this._pendingCmds  = [];       // queued before socket connects
+        this._isPaused = false;        // true when CPU is at a breakpoint / halted
 
         // Terminal (PTY)
         this._writeEmitter = new vscode.EventEmitter();
@@ -156,9 +157,11 @@ class KaguDebugAdapter {
                 if (line === 'END') this._stateCallback = null;
             } else if (line.startsWith('PAUSED ')) {
                 this._currentPc = parseInt(line.split(' ')[1]);
+                this._isPaused = true;
                 this._event('stopped', { reason: 'breakpoint',
                     threadId: 1, allThreadsStopped: true });
             } else if (line === 'HALTED') {
+                this._isPaused = true;
                 this._event('stopped', { reason: 'pause',
                     description: 'CPU halted', threadId: 1, allThreadsStopped: true });
             }
@@ -208,6 +211,7 @@ class KaguDebugAdapter {
             scopes:              () => this._handleScopes(message),
             variables:           () => this._handleVariables(message),
             setVariable:         () => this._handleSetVariable(message),
+            evaluate:            () => this._handleEvaluate(message),
             threads:             () => this._respond(message, { threads: [{ id: 1, name: 'KaguOS CPU' }] }),
             disconnect:          () => this._handleDisconnect(message),
         };
@@ -215,7 +219,11 @@ class KaguDebugAdapter {
     }
 
     _handleInitialize(req) {
-        this._respond(req, { supportsConfigurationDoneRequest: true, supportsSetVariable: true });
+        this._respond(req, {
+            supportsConfigurationDoneRequest: true,
+            supportsSetVariable: true,
+            supportsEvaluateForHovers: true,
+        });
         this._event('initialized');
     }
 
@@ -320,12 +328,14 @@ class KaguDebugAdapter {
     }
 
     _handleContinue(req) {
+        this._isPaused = false;
         this._respond(req, { allThreadsContinued: true });
         this._event('continued', { threadId: 1, allThreadsContinued: true });
         this._toKagu('CONTINUE');
     }
 
     _handleNext(req) {
+        this._isPaused = false;
         this._respond(req);
         this._toKagu('STEP');
     }
@@ -393,6 +403,40 @@ class KaguDebugAdapter {
                          success: false, command: req.command,
                          message: `Unknown variable: ${name}` });
         }
+    }
+
+    _handleEvaluate(req) {
+        const expr = (req.arguments?.expression ?? '').trim();
+
+        if (!this._isPaused) {
+            this._respond(req, { result: '<running>', type: 'string', variablesReference: 0 });
+            return;
+        }
+
+        // Resolve expression: register name, [N], or bare number
+        let addr = ADDR_BY_NAME[expr];
+        if (addr === undefined) {
+            const m = expr.match(/^\[(\d+)\]$/) ?? expr.match(/^(\d+)$/);
+            if (m) addr = parseInt(m[1]);
+        }
+
+        if (addr === undefined) {
+            this._send({ type: 'response', request_seq: req.seq,
+                         success: false, command: req.command,
+                         message: `Unknown: ${expr}. Use a register name (e.g. REG_A) or address (e.g. [42] or 42)` });
+            return;
+        }
+
+        let result = '""';
+        this._stateCallback = line => {
+            if (line.startsWith('RAM ')) {
+                const parts = line.split(' ');
+                result = parts.slice(2).join(' ') || '""';
+            } else if (line === 'END') {
+                this._respond(req, { result, type: 'string', variablesReference: 0 });
+            }
+        };
+        this._toKagu(`STATE ${addr} ${addr}`);
     }
 
     _handleDisconnect(req) {
