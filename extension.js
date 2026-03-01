@@ -213,10 +213,34 @@ class KaguDebugAdapter {
         try {
             const lines = fs.readFileSync(mapFile, 'utf8').split('\n');
             for (const line of lines) {
-                const sp = line.trim().indexOf(' ');
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                if (trimmed.startsWith('var:')) {
+                    // var:name addr file:line
+                    const parts = trimmed.split(' ');
+                    if (parts.length < 2) continue;
+                    const varName = parts[0];           // "var:name"
+                    const addr    = parseInt(parts[1]);
+                    if (isNaN(addr)) continue;
+                    this._srcToAddr.set(varName, addr); // "var:name" -> addr
+                    if (parts.length >= 3) {
+                        const rest   = parts[2];
+                        const colon  = rest.lastIndexOf(':');
+                        if (colon >= 0) {
+                            const file = rest.substring(0, colon);
+                            const ln   = parseInt(rest.substring(colon + 1));
+                            this._addrToSrc.set(addr, { file, line: ln });
+                        }
+                    }
+                    continue;
+                }
+
+                // addr file:line  (instruction entry)
+                const sp = trimmed.indexOf(' ');
                 if (sp < 0) continue;
-                const addr  = parseInt(line.substring(0, sp));
-                const rest  = line.substring(sp + 1).trim();
+                const addr  = parseInt(trimmed.substring(0, sp));
+                const rest  = trimmed.substring(sp + 1).trim();
                 const colon = rest.lastIndexOf(':');
                 if (colon < 0) continue;
                 const file  = rest.substring(0, colon);
@@ -428,7 +452,9 @@ class KaguDebugAdapter {
         const value = args.value ?? '';
 
         // Resolve name → RAM address
-        let addr = ADDR_BY_NAME[name];
+        let addr = ADDR_BY_NAME[name]
+            ?? this._srcToAddr.get(name)
+            ?? this._srcToAddr.get('var:' + name);
         if (addr === undefined) {
             const m = name.match(/^\[(\d+)\]$/);
             if (m) addr = parseInt(m[1]);
@@ -452,8 +478,10 @@ class KaguDebugAdapter {
             return;
         }
 
-        // Resolve expression: register name, [N], or bare number
-        let addr = ADDR_BY_NAME[expr];
+        // Resolve expression: register name, var:name, [N], or bare number
+        let addr = ADDR_BY_NAME[expr]
+            ?? this._srcToAddr.get(expr)              // var:name from map
+            ?? this._srcToAddr.get('var:' + expr);    // bare name → try as var
         if (addr === undefined) {
             const m = expr.match(/^\[(\d+)\]$/) ?? expr.match(/^(\d+)$/);
             if (m) addr = parseInt(m[1]);
