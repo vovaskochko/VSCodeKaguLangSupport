@@ -2,7 +2,7 @@
   "name": "kaguasmlang",
   "displayName": "KaguOS Assembler Language Support",
   "description": "Support of KaguOS assembler language",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -34,6 +34,9 @@
         "scopeName": "source.kga",
         "path": "./syntaxes/kaguasm.tmLanguage.json"
       }
+    ],
+    "breakpoints": [
+      { "language": "kaguasm" }
     ],
     "debuggers": [
       {
