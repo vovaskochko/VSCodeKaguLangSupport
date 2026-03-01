@@ -87,6 +87,8 @@ class KaguDebugAdapter {
         this._srcToAddr = new Map();   // 'file:line' -> addr
         this._bpByFile  = new Map();   // srcPath -> Set<addr>
         this._currentPc = null;
+        this._ramSize = null;          // received from READY handshake
+        this._launchReq = null;        // deferred until READY arrives
         this._stateCallback = null;    // set while waiting for STATE response
         this._pendingCmds  = [];       // queued before socket connects
     }
@@ -133,7 +135,13 @@ class KaguDebugAdapter {
             const line = raw.trimEnd();
             if (!line) continue;
 
-            if (this._stateCallback && (line.startsWith('RAM ') || line === 'END')) {
+            if (line.startsWith('READY ')) {
+                this._ramSize = parseInt(line.split(' ')[1]);
+                if (this._launchReq) {
+                    this._respond(this._launchReq);
+                    this._launchReq = null;
+                }
+            } else if (this._stateCallback && (line.startsWith('RAM ') || line === 'END')) {
                 this._stateCallback(line);
                 if (line === 'END') this._stateCallback = null;
             } else if (line.startsWith('PAUSED ')) {
@@ -202,15 +210,16 @@ class KaguDebugAdapter {
 
     _handleLaunch(req) {
         const a = req.arguments || {};
-        const root       = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
-        const abs        = p => path.isAbsolute(p) ? p : path.join(root, p);
-        const firmware   = a.firmware  ?? 'hw/cpu_firmware.bin';
-        const ramSize    = String(a.ramSize ?? 2048);
-        const mapFile    = abs(a.mapFile   ?? 'build/kernel.map');
-        const kaguBoot   = abs(a.kaguBoot  ?? './kagu_boot');
-        const debugPort  = a.debugPort  ?? 4711;
+        const root      = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
+        const abs       = p => path.isAbsolute(p) ? p : path.join(root, p);
+        const firmware  = a.firmware  ?? 'hw/cpu_firmware.bin';
+        const ramSize   = String(a.ramSize ?? 2048);
+        const mapFile   = abs(a.mapFile  ?? 'build/kernel.map');
+        const kaguBoot  = abs(a.kaguBoot ?? './kagu_boot');
+        const debugPort = a.debugPort ?? 4711;
 
         this._loadMap(mapFile);
+        this._launchReq = req;  // respond only after READY is received
 
         this._proc = spawn(kaguBoot, [firmware, ramSize, '--debug-port', String(debugPort)],
                            { cwd: root });
@@ -219,7 +228,7 @@ class KaguDebugAdapter {
         setTimeout(() => {
             this._socket = net.createConnection(debugPort, '127.0.0.1', () => {
                 this._flushPending();
-                this._respond(req);
+                // launch response is sent when READY arrives, not here
             });
             this._socket.on('data', d => this._onSocketData(d));
             this._socket.on('close', () => this._event('terminated'));
@@ -309,6 +318,8 @@ class KaguDebugAdapter {
                 this._respond(req, { variables });
             }
         };
+        // Request all named registers (1-27); ramSize is now known but showing
+        // the full RAM in the variables panel would be overwhelming.
         this._toKagu('STATE 1 27');
     }
 
