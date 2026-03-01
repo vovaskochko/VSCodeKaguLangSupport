@@ -75,6 +75,45 @@ const REG_NAMES = {
 const ADDR_BY_NAME = Object.fromEntries(
     Object.entries(REG_NAMES).map(([addr, name]) => [name, parseInt(addr)]));
 
+// Value interpretation tables (addr -> { numericValue -> constantName })
+const OP_NAMES = {
+     0: 'OP_ADD',                1: 'OP_SUB',            2: 'OP_INCR',
+     3: 'OP_DECR',               4: 'OP_DIV',            5: 'OP_MOD',
+     6: 'OP_MUL',                7: 'OP_IS_NUM',
+     8: 'OP_CMP_EQ',             9: 'OP_CMP_NEQ',       10: 'OP_CMP_LT',
+    11: 'OP_CMP_LE',
+    12: 'OP_CONTAINS',          13: 'OP_GET_LENGTH',    14: 'OP_STARTS_WITH',
+    15: 'OP_GET_COLUMN',        16: 'OP_REPLACE_COLUMN',17: 'OP_CONCAT_WITH',
+    18: 'OP_READ_INPUT',        19: 'OP_DISPLAY',       20: 'OP_DISPLAY_LN',
+    21: 'OP_READ_BLOCK',        22: 'OP_WRITE_BLOCK',
+    23: 'OP_SET_BACKGROUND_COLOR', 24: 'OP_RENDER_BITMAP',
+    25: 'OP_SYS_CALL',          26: 'OP_SYS_RETURN',
+    27: 'OP_ENCRYPT_DATA',      28: 'OP_DECRYPT_DATA',
+    29: 'OP_NOP',               30: 'OP_HALT',          31: 'OP_UNKNOWN',
+};
+
+const COLOR_NAMES = {
+    0: 'COLOR_NO',   1: 'COLOR_GREEN',   2: 'COLOR_YELLOW', 3: 'COLOR_RED',
+    4: 'COLOR_BLACK',5: 'COLOR_BLUE',    6: 'COLOR_MAGENTA',7: 'COLOR_CYAN',
+    8: 'COLOR_WHITE',9: 'COLOR_PINK',
+};
+
+// Which addresses have a value interpretation table
+const VALUE_INTERPRETERS = {
+     7: OP_NAMES,      // REG_OP
+    13: COLOR_NAMES,   // DISPLAY_COLOR
+    15: COLOR_NAMES,   // DISPLAY_BACKGROUND
+};
+
+function interpretValue(addr, raw) {
+    if (!raw) return '""';
+    const table = VALUE_INTERPRETERS[addr];
+    if (!table) return raw;
+    const n = parseInt(raw);
+    if (!isNaN(n) && table[n] !== undefined) return `${raw} (${table[n]})`;
+    return raw;
+}
+
 
 // ============================================================================
 // KaguDebugAdapter — inline DAP implementation
@@ -374,7 +413,7 @@ class KaguDebugAdapter {
                 const addr  = parseInt(parts[1]);
                 const value = parts.slice(2).join(' ');
                 const name  = REG_NAMES[addr] ?? `[${addr}]`;
-                variables.push({ name, value: value || '""',
+                variables.push({ name, value: interpretValue(addr, value),
                                   variablesReference: 0 });
             } else if (line === 'END') {
                 this._respond(req, { variables });
@@ -431,7 +470,7 @@ class KaguDebugAdapter {
         this._stateCallback = line => {
             if (line.startsWith('RAM ')) {
                 const parts = line.split(' ');
-                result = parts.slice(2).join(' ') || '""';
+                result = interpretValue(addr, parts.slice(2).join(' '));
             } else if (line === 'END') {
                 this._respond(req, { result, type: 'string', variablesReference: 0 });
             }
