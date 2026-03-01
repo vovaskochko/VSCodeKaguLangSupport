@@ -350,16 +350,12 @@ class KaguDebugAdapter {
 
     _handleScopes(req) {
         this._respond(req, { scopes: [
-            { name: 'Registers', variablesReference: 1, expensive: false,
-              presentationHint: 'registers' },
-            { name: 'RAM',       variablesReference: 2, expensive: true },
+            { name: 'RAM', variablesReference: 1, expensive: true },
         ]});
     }
 
     _handleVariables(req) {
-        const ref = req.arguments?.variablesReference ?? 1;
-        const isFullRam = ref === 2;
-        const end = isFullRam ? (this._ramSize ?? 2048) : 27;
+        const end = this._ramSize ?? 2048;
 
         const variables = [];
         this._stateCallback = line => {
