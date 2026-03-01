@@ -56,7 +56,7 @@ const KEYBOARD_MODES = [
 ];
 
 // ============================================================================
-// Register name map (from registers.hpp)
+// Register name map (from registers.hpp) and reverse lookup
 // ============================================================================
 const REG_NAMES = {
      1: 'REG_A',              2: 'REG_B',              3: 'REG_C',
@@ -70,6 +70,11 @@ const REG_NAMES = {
     24: 'SYS_RET_ADDRESS',   25: 'SYS_INTERRUPT_HANDLER',
     26: 'SYS_INTERRUPT_DATA',27: 'SYS_HW_TIMER',
 };
+
+// Reverse map: name -> address (for setVariable)
+const ADDR_BY_NAME = Object.fromEntries(
+    Object.entries(REG_NAMES).map(([addr, name]) => [name, parseInt(addr)]));
+
 
 // ============================================================================
 // KaguDebugAdapter — inline DAP implementation
@@ -91,6 +96,11 @@ class KaguDebugAdapter {
         this._launchReq = null;        // deferred until READY arrives
         this._stateCallback = null;    // set while waiting for STATE response
         this._pendingCmds  = [];       // queued before socket connects
+
+        // Terminal (PTY)
+        this._writeEmitter = new vscode.EventEmitter();
+        this._terminal = null;
+        this._inputBuffer = '';
     }
 
     // ---- DAP transport --------------------------------------------------
@@ -197,6 +207,7 @@ class KaguDebugAdapter {
             stackTrace:          () => this._handleStackTrace(message),
             scopes:              () => this._handleScopes(message),
             variables:           () => this._handleVariables(message),
+            setVariable:         () => this._handleSetVariable(message),
             threads:             () => this._respond(message, { threads: [{ id: 1, name: 'KaguOS CPU' }] }),
             disconnect:          () => this._handleDisconnect(message),
         };
@@ -204,7 +215,7 @@ class KaguDebugAdapter {
     }
 
     _handleInitialize(req) {
-        this._respond(req, { supportsConfigurationDoneRequest: true });
+        this._respond(req, { supportsConfigurationDoneRequest: true, supportsSetVariable: true });
         this._event('initialized');
     }
 
@@ -221,8 +232,46 @@ class KaguDebugAdapter {
         this._loadMap(mapFile);
         this._launchReq = req;  // respond only after READY is received
 
+        // Create the interactive terminal (PTY) before spawning the process
+        const writeEmitter = this._writeEmitter;
+        const self = this;
+        const pty = {
+            onDidWrite: writeEmitter.event,
+            open() {},
+            close() { self._proc?.kill(); },
+            handleInput(data) {
+                for (const ch of data) {
+                    if (ch === '\r') {
+                        // Enter — send buffered line to kagu_boot stdin
+                        writeEmitter.fire('\r\n');
+                        self._proc?.stdin?.write(self._inputBuffer + '\n');
+                        self._inputBuffer = '';
+                    } else if (ch === '\x7f' || ch === '\x08') {
+                        // Backspace
+                        if (self._inputBuffer.length > 0) {
+                            self._inputBuffer = self._inputBuffer.slice(0, -1);
+                            writeEmitter.fire('\x1b[D \x1b[D');
+                        }
+                    } else if (ch >= ' ') {
+                        self._inputBuffer += ch;
+                        writeEmitter.fire(ch);
+                    }
+                }
+            }
+        };
+        this._terminal = vscode.window.createTerminal({ name: 'KaguOS', pty });
+        this._terminal.show();
+
         this._proc = spawn(kaguBoot, [firmware, ramSize, '--debug-port', String(debugPort)],
-                           { cwd: root });
+                           { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
+
+        // Wire proc stdout/stderr to the terminal
+        this._proc.stdout.on('data', d => {
+            writeEmitter.fire(d.toString().replace(/\n/g, '\r\n'));
+        });
+        this._proc.stderr.on('data', d => {
+            this._event('output', { category: 'stderr', output: d.toString() });
+        });
 
         // Give kagu_boot a moment to bind the socket before we connect
         setTimeout(() => {
@@ -301,38 +350,69 @@ class KaguDebugAdapter {
 
     _handleScopes(req) {
         this._respond(req, { scopes: [
-            { name: 'Registers', variablesReference: 1, expensive: false },
+            { name: 'Registers', variablesReference: 1, expensive: false,
+              presentationHint: 'registers' },
+            { name: 'RAM',       variablesReference: 2, expensive: true },
         ]});
     }
 
     _handleVariables(req) {
+        const ref = req.arguments?.variablesReference ?? 1;
+        const isFullRam = ref === 2;
+        const end = isFullRam ? (this._ramSize ?? 2048) : 27;
+
         const variables = [];
         this._stateCallback = line => {
             if (line.startsWith('RAM ')) {
                 const parts = line.split(' ');
                 const addr  = parseInt(parts[1]);
                 const value = parts.slice(2).join(' ');
-                variables.push({ name: REG_NAMES[addr] ?? `RAM[${addr}]`,
-                                  value: value || '""', variablesReference: 0 });
+                const name  = REG_NAMES[addr] ?? `[${addr}]`;
+                variables.push({ name, value: value || '""',
+                                  variablesReference: 0 });
             } else if (line === 'END') {
                 this._respond(req, { variables });
             }
         };
-        // Request all named registers (1-27); ramSize is now known but showing
-        // the full RAM in the variables panel would be overwhelming.
-        this._toKagu('STATE 1 27');
+        this._toKagu(`STATE 1 ${end}`);
+    }
+
+    _handleSetVariable(req) {
+        const args  = req.arguments || {};
+        const name  = args.name  ?? '';
+        const value = args.value ?? '';
+
+        // Resolve name → RAM address
+        let addr = ADDR_BY_NAME[name];
+        if (addr === undefined) {
+            const m = name.match(/^\[(\d+)\]$/);
+            if (m) addr = parseInt(m[1]);
+        }
+
+        if (addr !== undefined) {
+            this._toKagu(`SET ${addr} ${value}`);
+            this._respond(req, { value, type: 'string' });
+        } else {
+            this._send({ type: 'response', request_seq: req.seq,
+                         success: false, command: req.command,
+                         message: `Unknown variable: ${name}` });
+        }
     }
 
     _handleDisconnect(req) {
         this._toKagu('QUIT');
         this._socket?.destroy();
         this._proc?.kill();
+        this._terminal?.dispose();
+        this._terminal = null;
         this._respond(req);
     }
 
     dispose() {
         this._socket?.destroy();
         this._proc?.kill();
+        this._terminal?.dispose();
+        this._terminal = null;
     }
 }
 
