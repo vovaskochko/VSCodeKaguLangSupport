@@ -295,7 +295,7 @@ class KaguDebugAdapter {
         const root      = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
         const abs       = p => path.isAbsolute(p) ? p : path.join(root, p);
         const firmware  = a.firmware  ?? 'hw/cpu_firmware.bin';
-        const ramSize   = String(a.ramSize ?? 2048);
+        const ramSize   = String(a.ramSize ?? 6000);
         const mapFile   = abs(a.mapFile  ?? 'build/kernel.map');
         const kaguBoot  = abs(a.kaguBoot ?? './kagu_boot');
         const debugPort = a.debugPort ?? 4711;
